@@ -5,11 +5,19 @@ If you use this model, we would appreciate if you could cite [1] and [2] :).
 The official Tensorflow hub version of this model can be found here: https://tfhub.dev/deepmind/mil-nce/s3d/1
 with a colab on how to use it here: https://colab.research.google.com/github/tensorflow/hub/blob/master/examples/colab/text_to_video_retrieval_with_s3d_milnce.ipynb
 
+## [MATS, David Lindner stream] Notes on environment
+One can use `vlmrm` after adding
+```
+conda install imageio av
+```
+
 ## Getting the data
 
 You will first need to download the model weights and the word dictionary.
 
 ```sh
+mkdir checkpoint
+cd checkpoint
 wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_howto100m.pth
 wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_dict.npy
 ```
@@ -25,10 +33,10 @@ import torch as th
 from s3dg import S3D
 
 # Instantiate the model
-net = S3D('s3d_dict.npy', 512)
+net = S3D('checkpoint/s3d_dict.npy', 512)
 
 # Load the model weights
-net.load_state_dict(th.load('s3d_howto100m.pth'))
+net.load_state_dict(th.load('checkpoint/s3d_howto100m.pth'))
 
 # Video input should be of size Batch x 3 x T x H x W and normalized to [0, 1] 
 video = th.rand(2, 3, 32, 224, 224)
