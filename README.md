@@ -25,6 +25,30 @@ wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_dict.npy
 
 ## How To use it ?
 
+### trajectory_evaluator
+1. Prepare a txt file (say `prompts/cheetah_prompts.txt`) with several prompts you want to compare against:
+
+```
+A stick model of a dog is actively running
+A stick model of a dog trying to move but failing
+A stick model of a dog doing weird things
+
+```
+Put one prompt per line.
+
+2. Prepare a trajectory in mp4 format (say `trajectories/cheetah_on_back_legs.mp4`)
+
+3. Run
+```sh
+python trajectory_evaluator.py \
+    -v trajectories/cheetah_on_back_legs.mp4 \
+    -p prompts/cheetah_prompts.txt
+```
+This code will output computed cosine similarities in stdout.
+
+**Note:** I tried using softmax, but similarities might often be small, and probabilities become too close to each other, so for now I output unnormalized cosine similarities.
+
+### [instructions from original repo]
 The following code explain how to instantiate S3D Text-Video with the pretrained weights and run inference
 on some examples.
 
