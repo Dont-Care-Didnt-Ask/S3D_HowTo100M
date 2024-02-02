@@ -48,6 +48,8 @@ This code will output computed cosine similarities in stdout.
 
 **Note:** I tried using softmax, but similarities might often be small, and probabilities become too close to each other, so for now I output unnormalized cosine similarities.
 
+**Note 2:** I uniformly sample 32 frames from the whole video in order to be compatible with their training setup.
+
 ### [instructions from original repo]
 The following code explain how to instantiate S3D Text-Video with the pretrained weights and run inference
 on some examples.
