@@ -40,15 +40,17 @@ Put one prompt per line.
 
 3. Run
 ```sh
-python trajectory_evaluator.py \
-    -v trajectories/cheetah_on_back_legs.mp4 \
-    -p prompts/cheetah_prompts.txt
+python viclip_evaluator.py \
+    -t trajectories/cheetah_on_back_legs.mp4 \
+    -p prompts/cheetah_prompts.txt \
+    [-v/--verbose] \
+    [--n-frames NUM_FRAMES]
 ```
 This code will output computed cosine similarities in stdout.
 
 **Note:** I tried using softmax, but similarities might often be small, and probabilities become too close to each other, so for now I output unnormalized cosine similarities.
 
-**Note 2:** I uniformly sample 32 frames from the whole video in order to be compatible with their training setup.
+**Note 2:** With S3D, I uniformly sample 32 frames from the whole video in order to be compatible with their training setup. With ViCLIP, I unformly sample 8 frames.
 
 ### [instructions from original repo]
 The following code explain how to instantiate S3D Text-Video with the pretrained weights and run inference
