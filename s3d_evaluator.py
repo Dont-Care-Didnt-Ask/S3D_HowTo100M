@@ -4,8 +4,8 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
-from s3dg import S3D
-from util import load_prompts, load_video
+from modeling.s3dg import S3D
+from modeling.util import load_prompts, load_video
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare trajectory with given prompts")
@@ -19,7 +19,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def prepare_video(video: np.ndarray, n_frames: int, verbose: bool):
+def prepare_video(video: np.ndarray, n_frames: int, verbose: bool) -> torch.Tensor:
     if verbose:
         print("Initial video shape:", video.shape, " dtype:", video.dtype)
 
@@ -51,7 +51,8 @@ def prepare_video(video: np.ndarray, n_frames: int, verbose: bool):
 
 def load_model(model_checkpoint_path):
     # Instantiate the model
-    net = S3D('checkpoints/s3d_dict.npy', 512)
+    embedding_dim = 512
+    net = S3D('checkpoints/s3d_dict.npy', embedding_dim)
     # Load the model weights
     net.load_state_dict(torch.load(model_checkpoint_path))
     # Evaluation mode

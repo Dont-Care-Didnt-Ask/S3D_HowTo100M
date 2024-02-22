@@ -1,0 +1,12 @@
+# Some data
+prompts
+checkpoints
+**.zip
+
+# Python and pytest stuff
+**__pycache__
+**pytest_cache
+**.coverage
+
+# Other
+.notifier

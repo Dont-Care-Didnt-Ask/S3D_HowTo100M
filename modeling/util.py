@@ -1,9 +1,13 @@
 import imageio.v3 as iio
+from typing import List
 
 def load_video(path: str):
-    return iio.imread(path, plugin="pyav")
+    if path.endswith(".mp4"):
+        return iio.imread(path, plugin="pyav")
+    elif path.endswith(".avi"):
+        return iio.imread(path, format="FFMPEG")
 
-def load_prompts(path: str, verbose: bool):
+def load_prompts(path: str, verbose: bool) -> List[str]:
     prompts = []
 
     with open(path, "r") as f:

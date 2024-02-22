@@ -4,8 +4,8 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
-from viclip import get_viclip
-from util import load_prompts, load_video
+from modeling.viclip import get_viclip
+from modeling.util import load_prompts, load_video
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare trajectory with given prompts")
