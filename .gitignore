@@ -1,6 +1,8 @@
 # Some data
 prompts
+trajectories_lists
 checkpoints
+evaluation_results
 **.zip
 
 # Python and pytest stuff

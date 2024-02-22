@@ -8,7 +8,7 @@ with a colab on how to use it here: https://colab.research.google.com/github/ten
 ## [MATS, David Lindner stream] Notes on environment
 One can use `vlmrm` after adding
 ```
-conda install imageio av
+conda install imageio av seaborn pytest
 ```
 
 ## Getting the data
@@ -32,21 +32,28 @@ wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_dict.npy
 A stick model of a dog is actively running
 A stick model of a dog trying to move but failing
 A stick model of a dog doing weird things
-
 ```
 Put one prompt per line.
 
-2. Prepare a trajectory in mp4 format (say `trajectories/cheetah_on_back_legs.mp4`)
+2. Prepare a txt file (say `trajectories_lists/cheetah.txt`) with several paths to trajectories in mp4 format: 
+```
+trajectories/cheetah_on_back_legs.mp4
+trajectories/cheetah_crawl.mp4
+trajectories/cheetah_slow.mp4
+```
+Put one path per line.
 
 3. Run
 ```sh
-python viclip_evaluator.py \
-    -t trajectories/cheetah_on_back_legs.mp4 \
+python s3d_evaluator.py \
+    -t trajectories_lists/cheetah.txt \
     -p prompts/cheetah_prompts.txt \
+    -e EXPERIMENT_NAME \
+    [-o OUTPUT_DIRECTORY] \
     [-v/--verbose] \
-    [--n-frames NUM_FRAMES]
+    [--n-frames N_FRAMES]
 ```
-This code will output computed cosine similarities in stdout.
+This code will generate `OUTPUT_DIRECTORY/EXPERIMENT_NAME.png` with a similarity matrix as a heatmap (trajectory vs label). By default `OUTPUT_DIRECTORY` is set to `evaluation_results`.
 
 **Note:** I tried using softmax, but similarities might often be small, and probabilities become too close to each other, so for now I output unnormalized cosine similarities.
 

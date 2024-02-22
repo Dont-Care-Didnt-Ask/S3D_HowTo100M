@@ -4,14 +4,16 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
+import modeling.util as util
 from modeling.s3dg import S3D
-from modeling.util import load_prompts, load_video
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare trajectory with given prompts")
 
-    parser.add_argument("-t", "--trajectory-path", help="Path to trajectory in mp4 format.", required=True)
+    parser.add_argument("-t", "--trajectories-path", help="Path to a file, containing paths to trajectories in mp4 format.", required=True)
     parser.add_argument("-p", "--prompts-path", help="Path to prompts in txt format. Expected to have one prompt per line.", required=True)
+    parser.add_argument("-e", "--experiment-id", help="Name of current experiment (used to save the results)", required=True)
+    parser.add_argument("-o", "--output-dir", help="Directory to save evaluation results.", default="evaluation_results")
     parser.add_argument("--n-frames", type=int, default=32)
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--model-checkpoint-path", default="checkpoints/s3d_howto100m.pth")
@@ -67,16 +69,15 @@ def main():
 
     # Video input should be of size Batch x 3 x T x H x W and normalized to [0, 1] 
     # Also, afaik expects either 32 or 16 frames
-    video = prepare_video(load_video(args.trajectory_path), n_frames=args.n_frames, verbose=False)
-    
-    prompts = load_prompts(args.prompts_path, verbose=False)
+    videos, video_paths = util.get_video_batch(args.trajectories_path, prepare_video, args.n_frames, args.verbose)
+    prompts = util.load_prompts(args.prompts_path, verbose=args.verbose)
 
     net = load_model(args.model_checkpoint_path)
     
     # Video inference
     if args.verbose:
-        print("Embedding video...")
-    video_output = net(video)
+        print("Embedding videos...")
+    video_output = net(videos)
     
     # Text inference
     if args.verbose:
@@ -86,11 +87,13 @@ def main():
     v_embed = video_output["video_embedding"] / video_output["video_embedding"].norm(p=2, dim=-1, keepdim=True)
     p_embeds = text_output["text_embedding"] / text_output["text_embedding"].norm(p=2, dim=-1, keepdim=True)
 
-    similarities = (v_embed @ p_embeds.T).squeeze()
+    similarities = (v_embed @ p_embeds.T)
 
-    for i, prompt in enumerate(prompts):
-        print(f"Prompt {i:2d}: {prompt:<70}\tSimilarity: {similarities[i].item():.3f}")
+    if args.verbose:
+        print("similarities.shape:", similarities.shape)
 
+    trajectory_names = [util.strip_directories_and_extension(p) for p in video_paths]
+    util.make_heatmap(similarities.cpu().numpy(), trajectory_names, prompts, args.output_dir, args.experiment_id)
 
 if __name__ == "__main__":
     main()
