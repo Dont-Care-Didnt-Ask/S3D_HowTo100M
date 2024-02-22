@@ -5,13 +5,15 @@ import numpy as np
 import torch.nn.functional as F
 
 from modeling.viclip import get_viclip
-from modeling.util import load_prompts, load_video
+import modeling.util as util
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare trajectory with given prompts")
 
-    parser.add_argument("-t", "--trajectory-path", help="Path to trajectory in mp4 format.", required=True)
+    parser.add_argument("-t", "--trajectories-path", help="Path to trajectory in mp4 format.", required=True)
     parser.add_argument("-p", "--prompts-path", help="Path to prompts in txt format. Expected to have one prompt per line.", required=True)
+    parser.add_argument("-e", "--experiment-id", help="Name of current experiment (used to save the results)", required=True)
+    parser.add_argument("-o", "--output-dir", help="Directory to save evaluation results.", default="evaluation_results")
     parser.add_argument("--n-frames", type=int, default=8)
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--model-checkpoint-path", default="checkpoints/ViClip-InternVid-10M-FLT.pth")
@@ -62,17 +64,17 @@ def main():
     if args.verbose:
         print(f"Running ViCLIP evaluator with following args:\n{args}")
 
-    video = prepare_video(load_video(args.trajectory_path), n_frames=args.n_frames, verbose=args.verbose)
+    videos, video_paths = util.get_video_batch(args.trajectories_path, prepare_video, args.n_frames, args.verbose)
     
-    prompts = load_prompts(args.prompts_path, verbose=args.verbose)
+    prompts = util.load_prompts(args.prompts_path, verbose=args.verbose)
 
     viclip, _ = load_model_and_tokenizer(args.model_checkpoint_path)
     
     with torch.no_grad():
-        similarities = viclip(image=video, raw_text=prompts, return_sims=True).squeeze()
+        similarities = viclip(image=videos, raw_text=prompts, return_sims=True)
 
-    for i, prompt in enumerate(prompts):
-        print(f"Prompt {i:2d}: {prompt:<70}\tSimilarity: {similarities[i].item():.3f}")
+    trajectory_names = [util.strip_directories_and_extension(p) for p in video_paths]
+    util.make_heatmap(similarities.cpu().numpy(), trajectory_names, prompts, args.output_dir, args.experiment_id)
 
 
 if __name__ == "__main__":
