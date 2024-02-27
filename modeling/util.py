@@ -11,7 +11,7 @@ def load_video(path: str):
     if path.endswith(".mp4"):
         return iio.imread(path, plugin="pyav")
     elif path.endswith(".avi"):
-        return iio.imread(path, format="FFMPEG")
+        return iio.imread(path)
 
 def load_prompts(path: str, verbose: bool) -> List[str]:
     prompts = []
