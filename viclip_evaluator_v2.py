@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 import modeling.util as util
-from modeling.s3dg import S3D
+from modeling.viclip import get_viclip
 from modeling.prompts import FRANKA_PROMPT_SET
 
 def parse_args():
@@ -22,9 +22,9 @@ def parse_args():
     parser.add_argument("--average-by-video", action="store_true")
     parser.add_argument("--average-by-prompt", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("--n-frames", type=int, default=32)
+    parser.add_argument("--n-frames", type=int, default=8)
     parser.add_argument("--max-n-videos", type=int, default=10, help="Max number of videos taken from each directory when `--average-by-video` is True")
-    parser.add_argument("--model-checkpoint-path", default="checkpoints/s3d_howto100m.pth")
+    parser.add_argument("--model-checkpoint-path", default="checkpoints/ViClip-InternVid-10M-FLT.pth")
 
     args = parser.parse_args()
     return args
@@ -37,7 +37,9 @@ def prepare_videos(videos: List[np.ndarray], verbose: bool) -> torch.Tensor:
         print("Initial videos shape:", videos.shape, " dtype:", videos.dtype)
 
     if videos.dtype not in (torch.float16, torch.float32, torch.float64):
-        videos = videos.float() / 255
+        v_mean = torch.Tensor([0.485, 0.456, 0.406]).reshape(1, 1, 1, 1, 3)
+        v_std = torch.Tensor([0.229, 0.224, 0.225]).reshape(1, 1, 1, 1, 3)
+        videos = (videos.float() / 255 - v_mean) / v_std
     
     videos = F.interpolate(
         videos.flatten(0,1).permute(0, 3, 1, 2), # [batch_size * n_frames, n_channels, height, width]
@@ -45,7 +47,7 @@ def prepare_videos(videos: List[np.ndarray], verbose: bool) -> torch.Tensor:
         size=(224, 224),
     )
     
-    videos = videos.reshape(batch_size, n_frames, n_channels, 224, 224).transpose(1,2)
+    videos = videos.reshape(batch_size, n_frames, n_channels, 224, 224)
 
     if verbose:
         print("Min and max before clipping:", videos.min(), videos.max())
@@ -57,15 +59,9 @@ def prepare_videos(videos: List[np.ndarray], verbose: bool) -> torch.Tensor:
 
     return videos
 
-def load_model(model_checkpoint_path):
-    # Instantiate the model
-    embedding_dim = 512
-    net = S3D('checkpoints/s3d_dict.npy', embedding_dim)
-    # Load the model weights
-    net.load_state_dict(torch.load(model_checkpoint_path))
-    # Evaluation mode
-    net = net.eval()
-    return net
+def load_model_and_tokenizer(path: str):
+    model = get_viclip(pretrain=path)
+    return model["viclip"], model["tokenizer"]
 
 @torch.inference_mode()
 def main():
@@ -106,21 +102,12 @@ def main():
     prompt_group_borders = np.cumsum([0] + [len(group) for group in prompt_groups])
 
     # Prepare model
-    net = load_model(args.model_checkpoint_path)
+    viclip, _ = load_model_and_tokenizer(args.model_checkpoint_path)
 
     # Video inference
-    if args.verbose:
-        print("Embedding videos...")
-    video_output = net(videos)
-    v_embed = video_output["video_embedding"] / video_output["video_embedding"].norm(p=2, dim=-1, keepdim=True)
-    
-    # Text inference
-    if args.verbose:
-        print("Embedding text...")
-    text_output = net.text_module(flattened_prompts)
-    p_embeds = text_output["text_embedding"] / text_output["text_embedding"].norm(p=2, dim=-1, keepdim=True)
+    with torch.no_grad():
+        similarities = viclip(image=videos, raw_text=flattened_prompts, return_sims=True)
 
-    similarities = (v_embed @ p_embeds.T)
     if args.verbose:
         print("similarities.shape:", similarities.shape)
 
@@ -129,8 +116,8 @@ def main():
     os.makedirs(result_dir, exist_ok=True)
     np.save(f"{result_dir}/similarities.npy", similarities.cpu().numpy())
 
-    sample_video = (videos[0].permute(1,2,3,0).cpu().numpy() * 255).astype(np.uint8)
-    util.save_video(sample_video, f"{result_dir}/sample_preprocessed_video.mp4", fps=24)
+    sample_video = (videos[0].permute(0,2,3,1).cpu().numpy() * 255).astype(np.uint8)
+    util.save_video(sample_video, f"{result_dir}/sample_preprocessed_video.mp4", fps=8)
 
     context = {
         "prompt_groups": prompt_groups,
