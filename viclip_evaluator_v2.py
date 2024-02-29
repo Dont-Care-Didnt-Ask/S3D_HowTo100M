@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument("-p", "--prompt-set", default="franka", help="Prompt set to use in evaluation. Defined in modeling/prompts.py")
     parser.add_argument("-e", "--experiment-id", help="Name of current experiment (used to save the results)", required=True)
     parser.add_argument("-o", "--output-dir", help="Directory to save evaluation results.", default="evaluation_results")
+    parser.add_argument("--normalize-similarities", action="store_true", help="Whether to normalize similarity scores to account for base rate bias. Advised to be used with --average-by-video.")
     parser.add_argument("--average-by-video", action="store_true")
     parser.add_argument("--average-by-prompt", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -67,7 +68,7 @@ def load_model_and_tokenizer(path: str):
 def main():
     args = parse_args()
     if args.verbose:
-        print(f"Running S3D evaluator with following args:\n{args}")
+        print(f"Running ViCLIP evaluator with following args:\n{args}")
 
     # Prepare videos
     with open(args.trajectories_path, "r") as f:
@@ -106,6 +107,11 @@ def main():
 
     # Video inference
     with torch.no_grad():
+        if torch.cuda.is_available():
+            device = "cuda:0"
+            viclip.to(device)
+            videos = videos.to(device)
+
         similarities = viclip(image=videos, raw_text=flattened_prompts, return_sims=True)
 
     if args.verbose:
@@ -131,10 +137,17 @@ def main():
     # visualization
     average_similarities, std_similarities = util.aggregate_similarities_many_video_groups(
         similarities, 
-        prompt_group_borders, 
-        video_group_borders, 
+        prompt_group_borders,
+        video_group_borders,
+        do_normalize=args.normalize_similarities,
     )
-    util.make_barplots(average_similarities, std_similarities, video_dir_paths, prompt_group_names, args.experiment_id, result_dir)
+
+    video_group_names = [path.split("/")[-1] for path in video_dir_paths]
+    if args.prompt_set == "franka":
+        # "friday_t-kettle_d-microwave" -> "kettle_d"
+        video_group_names = [name.split("-")[1] for name in video_group_names]
+
+    util.make_barplots(average_similarities, std_similarities, video_group_names, prompt_group_names, args.experiment_id, result_dir)
 
 if __name__ == "__main__":
     main()

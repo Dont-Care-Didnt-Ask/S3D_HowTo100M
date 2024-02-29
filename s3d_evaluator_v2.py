@@ -19,8 +19,9 @@ def parse_args():
     parser.add_argument("-p", "--prompt-set", default="franka", help="Prompt set to use in evaluation. Defined in modeling/prompts.py")
     parser.add_argument("-e", "--experiment-id", help="Name of current experiment (used to save the results)", required=True)
     parser.add_argument("-o", "--output-dir", help="Directory to save evaluation results.", default="evaluation_results")
-    parser.add_argument("--average-by-video", action="store_true")
-    parser.add_argument("--average-by-prompt", action="store_true")
+    parser.add_argument("--average-by-video", action="store_true", help="Use several videos of same action and average similarity")
+    parser.add_argument("--average-by-prompt", action="store_true", help="Use slight variations of prompt and average similarity")
+    parser.add_argument("--normalize-similarities", action="store_true", help="Whether to normalize similarity scores to account for base rate bias. Advised to be used with --average-by-video.")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--n-frames", type=int, default=32)
     parser.add_argument("--max-n-videos", type=int, default=10, help="Max number of videos taken from each directory when `--average-by-video` is True")
@@ -107,18 +108,25 @@ def main():
 
     # Prepare model
     net = load_model(args.model_checkpoint_path)
-
-    # Video inference
-    if args.verbose:
-        print("Embedding videos...")
-    video_output = net(videos)
-    v_embed = video_output["video_embedding"] / video_output["video_embedding"].norm(p=2, dim=-1, keepdim=True)
     
     # Text inference
     if args.verbose:
         print("Embedding text...")
     text_output = net.text_module(flattened_prompts)
     p_embeds = text_output["text_embedding"] / text_output["text_embedding"].norm(p=2, dim=-1, keepdim=True)
+
+    # Video inference
+    if args.verbose:
+        print("Embedding videos...")
+
+    if torch.cuda.is_available():
+        device = "cuda:0"
+        net.to(device)
+        videos = videos.to(device)
+
+    video_output = net(videos)
+    v_embed = video_output["video_embedding"] / video_output["video_embedding"].norm(p=2, dim=-1, keepdim=True)
+    v_embed = v_embed.cpu()
 
     similarities = (v_embed @ p_embeds.T)
     if args.verbose:
@@ -145,9 +153,16 @@ def main():
     average_similarities, std_similarities = util.aggregate_similarities_many_video_groups(
         similarities, 
         prompt_group_borders, 
-        video_group_borders, 
+        video_group_borders,
+        do_normalize=args.normalize_similarities,
     )
-    util.make_barplots(average_similarities, std_similarities, video_dir_paths, prompt_group_names, args.experiment_id, result_dir)
+
+    video_group_names = [path.split("/")[-1] for path in video_dir_paths]
+    if args.prompt_set == "franka":
+        # "friday_t-kettle_d-microwave" -> "kettle_d"
+        video_group_names = [name.split("-")[1] for name in video_group_names]
+
+    util.make_barplots(average_similarities, std_similarities, video_group_names, prompt_group_names, args.experiment_id, result_dir)
 
 if __name__ == "__main__":
     main()
