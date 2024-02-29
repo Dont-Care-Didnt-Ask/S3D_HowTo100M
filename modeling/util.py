@@ -58,13 +58,13 @@ def make_heatmap(similarity_matrix: np.ndarray, trajectories_names: List[str], l
         os.mkdir(result_dir)
     plt.savefig(f"{result_dir}/{experiment_id}.png", dpi=350)
 
-def make_barplots(average_similarities, std_similarities, video_dir_paths, prompt_group_names, experiment_id, result_dir):
+def make_barplots(average_similarities, std_similarities, video_group_names, prompt_group_names, experiment_id, result_dir):
     n_cols = 2
-    n_rows = (len(video_dir_paths) + n_cols - 1) // n_cols
+    n_rows = (len(video_group_names) + n_cols - 1) // n_cols
     plt.figure(figsize=(12, 3 + 3 * n_rows))
     plt.axis("off")
 
-    for i, dir_path in enumerate(video_dir_paths):
+    for i, dir_path in enumerate(video_group_names):
         indices = range(len(prompt_group_names))
         plt.subplot(n_rows, n_cols, i + 1)
         plt.title(dir_path.split('/')[-1])
@@ -95,15 +95,27 @@ def aggregate_similarities(similarities: np.ndarray, group_borders: List[int]):
 
     return average_similarities, std_similarities
 
-def aggregate_similarities_many_video_groups(similarities: np.ndarray, prompt_group_borders: List[int], video_group_borders: List[int]):
+def aggregate_similarities_many_video_groups(similarities: np.ndarray, prompt_group_borders: List[int], video_group_borders: List[int], do_normalize: bool):
     """
-    ! doc string may be inaccurate, function behavior can change
-    Aggregates similarities over slight variations in videos and prompts.
-    Returns average similatity of the whole video batch to each prompt group, and its standard error.
+    Takes a all-to-all similarity matrix between grouped videos and prompts. Aggregates the similarities by groups.
+    Input:
+        similarities: (n_total_videos, n_total_prompts)
+        prompt_group_borders: List[int] of length (n_prompt_groups + 1) -- prompt group `i` is between `prompt_group_borders[i]` and `prompt_group_borders[i+1]`
+        video_group_borders: List[int] of length (n_video_groups + 1) -- analogous
+        do_normalize: bool -- whether to normalize similarity for each prompt over all videos
+
+    Output:
+        average_similarities: (n_video_groups, n_prompt_groups) -- average similarity between a group of videos and prompts
+        std_similarities: (n_video_groups, n_prompt_groups) -- standard deviation of similarity betwenn a group of videos and prompts
     """
     n_total_videos, n_total_prompts = similarities.shape
     n_video_groups = len(video_group_borders) - 1
     n_prompt_groups = len(prompt_group_borders) - 1
+
+    if do_normalize:
+        bias = similarities.mean(0, keepdims=True)
+        scale = similarities.std(0, keepdims=True)
+        similarities = (similarities - bias) / scale
 
     average_similarities = np.empty((n_video_groups, n_prompt_groups))
     std_similarities = np.empty((n_video_groups, n_prompt_groups))
