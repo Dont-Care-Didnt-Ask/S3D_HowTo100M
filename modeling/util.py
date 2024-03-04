@@ -1,13 +1,13 @@
 import os
 import imageio.v3 as iio
-from typing import List, Callable
+from typing import List, Callable, Tuple, Union
 
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def load_video(path: str):
+def load_video(path: str) -> np.ndarray:
     if path.endswith(".mp4"):
         return iio.imread(path, plugin="pyav")
     elif path.endswith(".avi"):
@@ -42,7 +42,7 @@ def get_video_batch(trajectories_path: str, prepare_video: Callable, n_frames: i
 
     return videos, video_paths
 
-def uniformly_sample_n_frames(video, n_frames):
+def uniformly_sample_n_frames(video: Union[torch.Tensor, np.ndarray], n_frames: int) -> Union[torch.Tensor, np.ndarray]:
     # Probably not most accurate frame sampling -- might be improved
     length = video.shape[0]
     step_size = length // n_frames
@@ -76,7 +76,7 @@ def make_barplots(average_similarities, std_similarities, video_group_names, pro
     plt.tight_layout()
     plt.savefig(f"{result_dir}/aggregated_similarities.png", dpi=350)
 
-def aggregate_similarities(similarities: np.ndarray, group_borders: List[int]):
+def aggregate_similarities(similarities: np.ndarray, group_borders: List[int]) -> Tuple[np.ndarray, np.ndarray]:
     """
     ! doc string may be inaccurate, function behavior can change
     Aggregates similarities over slight variations in videos and prompts.
@@ -95,7 +95,7 @@ def aggregate_similarities(similarities: np.ndarray, group_borders: List[int]):
 
     return average_similarities, std_similarities
 
-def aggregate_similarities_many_video_groups(similarities: np.ndarray, prompt_group_borders: List[int], video_group_borders: List[int], do_normalize: bool):
+def aggregate_similarities_many_video_groups(similarities: np.ndarray, prompt_group_borders: List[int], video_group_borders: List[int], do_normalize: bool) -> Tuple[np.ndarray, np.ndarray]:
     """
     Takes a all-to-all similarity matrix between grouped videos and prompts. Aggregates the similarities by groups.
     Input:
@@ -130,5 +130,46 @@ def aggregate_similarities_many_video_groups(similarities: np.ndarray, prompt_gr
 
     return average_similarities, std_similarities
 
-def strip_directories_and_extension(path: str):
+def strip_directories_and_extension(path: str) -> str:
     return path.split("/")[-1].split(".")[0]
+
+def compute_projection(xs: torch.Tensor, directions: torch.Tensor) -> torch.Tensor:
+    """
+    Computes the projections of xs on respective directions.
+    Assumes that both xs and directions are unit-length.
+        xs: (n_examples, dim)
+        directions: (n_examples, dim) or (1, dim)
+    """
+    coefs = (xs * directions).sum(-1, keepdim=True)
+    return coefs * directions
+
+def compute_projection_similarity(prompt_embeds: torch.Tensor, video_embeds: torch.Tensor, directions: torch.Tensor, alpha: float) -> torch.Tensor:
+    """
+    Computes (and mixes) the similarity between prompt embeddings and video embeddings in original and projected space.
+    Assumes all mebddings are unit-length.
+        prompt_embeds: (n_prompts, dim)
+        video_embeds: (n_videos, dim)
+        directions: (n_prompts, dim) or (1, dim) -- directions, defining projected 1-d subspaces.
+        alpha: float -- mixing coefficient. 0 means no projection.
+    """
+    orig_sim = video_embeds @ prompt_embeds.T
+    proj_sim = video_embeds @ directions.T
+    return (1 - alpha) * orig_sim + alpha * proj_sim
+
+def compute_orig_reward(prompt_embeds: torch.Tensor, video_embeds: torch.Tensor, directions: torch.Tensor, alpha: float) -> torch.Tensor:
+    """Computes reward as implemented in code of VLM-RM paper (Vision-Language Models are Zero-Shot Reward Models for Reinforcement Learning).
+    Assumes all mebddings are unit-length.
+        prompt_embeds: (n_prompts, dim)
+        video_embeds: (n_videos, dim)
+        directions: (n_prompts, dim) or (1, dim) -- directions, defining projected 1-d subspaces.
+        alpha: float -- mixing coefficient. 0 means no projection.
+    """
+    mixed_prompt_embeds = (1 - alpha) * prompt_embeds + alpha * compute_projection(prompt_embeds, directions)
+
+    rewards = torch.empty(video_embeds.shape[0], prompt_embeds.shape[0])
+
+    for prompt_idx, direction in enumerate(directions):
+        mixed_video_embeds = (1 - alpha) * video_embeds + alpha * compute_projection(video_embeds, direction)
+        rewards[:, prompt_idx] = 1 - (mixed_video_embeds - mixed_prompt_embeds[prompt_idx]).square().sum(-1) / 2
+
+    return rewards

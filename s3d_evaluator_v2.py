@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 import modeling.util as util
 from modeling.s3dg import S3D
-from modeling.prompts import FRANKA_PROMPT_SET
+from modeling.prompts import FRANKA_PROMPT_SET, FRANKA_BASELINE
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare groups of trajectories from given directories with a prompt set.")
@@ -23,6 +23,8 @@ def parse_args():
     parser.add_argument("--average-by-prompt", action="store_true", help="Use slight variations of prompt and average similarity")
     parser.add_argument("--normalize-similarities", action="store_true", help="Whether to normalize similarity scores to account for base rate bias. Advised to be used with --average-by-video.")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--alpha", type=float, default=0.0, help="Coefficient for projection similarity. 0 means no projection, 1 means projection-only.")
+    parser.add_argument("--similarity-type", default="cosine", help="Which type of similarity to use.")
     parser.add_argument("--n-frames", type=int, default=32)
     parser.add_argument("--max-n-videos", type=int, default=10, help="Max number of videos taken from each directory when `--average-by-video` is True")
     parser.add_argument("--model-checkpoint-path", default="checkpoints/s3d_howto100m.pth")
@@ -112,8 +114,9 @@ def main():
     # Text inference
     if args.verbose:
         print("Embedding text...")
-    text_output = net.text_module(flattened_prompts)
-    p_embeds = text_output["text_embedding"] / text_output["text_embedding"].norm(p=2, dim=-1, keepdim=True)
+    p_embeds = F.normalize(net.text_module(flattened_prompts)["text_embedding"], dim=-1)
+    baseline_embed = F.normalize(net.text_module(FRANKA_BASELINE)["text_embedding"], dim=-1)
+    directions = F.normalize(p_embeds - baseline_embed, dim=-1)
 
     # Video inference
     if args.verbose:
@@ -125,10 +128,17 @@ def main():
         videos = videos.to(device)
 
     video_output = net(videos)
-    v_embed = video_output["video_embedding"] / video_output["video_embedding"].norm(p=2, dim=-1, keepdim=True)
-    v_embed = v_embed.cpu()
+    v_embeds = video_output["video_embedding"] / video_output["video_embedding"].norm(p=2, dim=-1, keepdim=True)
+    v_embeds = v_embeds.cpu()
 
-    similarities = (v_embed @ p_embeds.T)
+    #similarities = (v_embeds @ p_embeds.T)
+    if args.similarity_type == "cosine":
+        similarities = util.compute_projection_similarity(p_embeds, v_embeds, directions, args.alpha)
+    elif args.similarity_type == "original":
+        similarities = util.compute_orig_reward(p_embeds, v_embeds, directions, args.alpha)
+    else:
+        raise ValueError(f"similarity_type {args.similarity_type} is not supported yet.")
+
     if args.verbose:
         print("similarities.shape:", similarities.shape)
 

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 import modeling.util as util
 from modeling.viclip import get_viclip
-from modeling.prompts import FRANKA_PROMPT_SET
+from modeling.prompts import FRANKA_PROMPT_SET, FRANKA_BASELINE
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare groups of trajectories from given directories with a prompt set.")
@@ -23,6 +23,8 @@ def parse_args():
     parser.add_argument("--average-by-video", action="store_true")
     parser.add_argument("--average-by-prompt", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--alpha", type=float, default=0.0, help="Coefficient for projection similarity. 0 means no projection, 1 means projection-only.")
+    parser.add_argument("--similarity-type", default="cosine", help="Which type of similarity to use.")
     parser.add_argument("--n-frames", type=int, default=8)
     parser.add_argument("--max-n-videos", type=int, default=10, help="Max number of videos taken from each directory when `--average-by-video` is True")
     parser.add_argument("--model-checkpoint-path", default="checkpoints/ViClip-InternVid-10M-FLT.pth")
@@ -112,7 +114,17 @@ def main():
             viclip.to(device)
             videos = videos.to(device)
 
-        similarities = viclip(image=videos, raw_text=flattened_prompts, return_sims=True)
+        v_embeds = F.normalize(viclip.encode_vision(videos, test=True), dim=-1)
+        p_embeds = F.normalize(viclip.encode_text(flattened_prompts), dim=-1)
+        baseline_embed = F.normalize(viclip.encode_text(FRANKA_BASELINE), dim=-1)
+        directions = F.normalize(p_embeds - baseline_embed, dim=-1)
+
+        if args.similarity_type == "cosine":
+            similarities = util.compute_projection_similarity(p_embeds, v_embeds, directions, args.alpha)
+        elif args.similarity_type == "original":
+            similarities = util.compute_orig_reward(p_embeds, v_embeds, directions, args.alpha)
+        else:
+            raise ValueError(f"similarity_type {args.similarity_type} is not supported yet.")
 
     if args.verbose:
         print("similarities.shape:", similarities.shape)
